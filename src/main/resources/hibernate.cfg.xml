@@ -4,7 +4,7 @@
   <session-factory>
     <property name="hibernate.dialect">org.hibernate.dialect.DerbyTenSevenDialect</property>
     <property name="hibernate.connection.driver_class">org.apache.derby.jdbc.EmbeddedDriver</property>
-    <property name="hibernate.connection.url">jdbc:derby:notifications;create=true</property>
+    <property name="hibernate.connection.url">jdbc:derby:categorizer;create=true</property>
     <property name="hibernate.connection.username">app</property>
     <property name="hibernate.connection.password">app</property>
     <mapping package="net.saga.java.mbox.ajug.vo"/>

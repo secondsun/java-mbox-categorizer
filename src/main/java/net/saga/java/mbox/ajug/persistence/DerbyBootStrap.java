@@ -49,7 +49,7 @@ public class DerbyBootStrap implements AutoCloseable {
     }
 
     public void startUp() {
-        try (Connection conn = DriverManager.getConnection("jdbc:derby:notifications;create=true", "app", "app");) {
+        try (Connection conn = DriverManager.getConnection("jdbc:derby:categorizer;create=true", "app", "app");) {
             if (databaseExists(conn)) {
                 checkUpdate(conn);
             } else {

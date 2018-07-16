@@ -10,6 +10,7 @@ import javax.swing.JFileChooser;
 import javax.swing.filechooser.FileFilter;
 import net.saga.java.mbox.ajug.persistence.DerbyBootStrap;
 import net.saga.java.mbox.ajug.persistence.HibernateModule;
+import net.saga.java.mbox.ajug.ui.CategorizorUI;
 import org.hibernate.Session;
 
 /**
@@ -18,7 +19,6 @@ import org.hibernate.Session;
  */
 public class Main extends javax.swing.JFrame {
 
-    public static final HibernateModule HIBERNATE = new HibernateModule();
     private DerbyBootStrap bootStrap;
     private HibernateModule hibernate;
 
@@ -108,35 +108,36 @@ public class Main extends javax.swing.JFrame {
     }
 
     private void showCategorizorUI() {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+        setContentPane(new CategorizorUI(this.hibernate));
     }
 
     private void displayPopup() {
-        JFileChooser chooser = new JFileChooser("/home/summers/Downloads/Takeout");
-        
-        chooser.setFileFilter(new FileFilter() {
-            @Override
-            public boolean accept(File arg0) {
-                return (arg0.isDirectory() || arg0.getName().endsWith("mbox"));
-            }
-
-            @Override
-            public String getDescription() {
-                return "MBox Files";
-            }
-        });
-        
-        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
-        
-        int returnVal = chooser.showOpenDialog(this);
-
-        if (returnVal == JFileChooser.APPROVE_OPTION) {
-            File file = chooser.getSelectedFile();
-            System.out.println(file.getAbsolutePath());
-            MboxLoader.loadMbox(file);
-        } else {
-            System.out.println("Cancelled");
-        }
+//        JFileChooser chooser = new JFileChooser("/home/summers/Downloads/Takeout");
+//        
+//        chooser.setFileFilter(new FileFilter() {
+//            @Override
+//            public boolean accept(File arg0) {
+//                return (arg0.isDirectory() || arg0.getName().endsWith("mbox"));
+//            }
+//
+//            @Override
+//            public String getDescription() {
+//                return "MBox Files";
+//            }
+//        });
+//        
+//        chooser.setFileSelectionMode(JFileChooser.FILES_ONLY);
+//        
+//        int returnVal = chooser.showOpenDialog(this);
+//
+//        if (returnVal == JFileChooser.APPROVE_OPTION) {
+            File file = new File("/home/summers/Downloads/Takeout/Mail/AJUG.mbox");
+//            System.out.println(file.getAbsolutePath());
+            MboxLoader.loadMbox(file, hibernate);
+            showCategorizorUI();
+//        } else {
+//            System.out.println("Cancelled");
+//        }
     }
 
     private boolean checkForMessages() {
