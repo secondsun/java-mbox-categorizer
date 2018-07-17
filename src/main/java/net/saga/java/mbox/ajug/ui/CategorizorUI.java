@@ -5,7 +5,12 @@
  */
 package net.saga.java.mbox.ajug.ui;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.DefaultListModel;
 import javax.swing.JOptionPane;
 import javax.swing.ListModel;
@@ -15,6 +20,19 @@ import javax.swing.event.ListSelectionListener;
 import net.saga.java.mbox.ajug.persistence.HibernateModule;
 import net.saga.java.mbox.ajug.vo.Classification;
 import net.saga.java.mbox.ajug.vo.EmailMessage;
+import opennlp.tools.doccat.DoccatFactory;
+import opennlp.tools.doccat.DoccatModel;
+import opennlp.tools.doccat.DocumentCategorizer;
+import opennlp.tools.doccat.DocumentCategorizerME;
+import opennlp.tools.doccat.DocumentSampleStream;
+import opennlp.tools.ml.AbstractTrainer;
+import opennlp.tools.ml.naivebayes.NaiveBayesTrainer;
+import opennlp.tools.util.InputStreamFactory;
+import opennlp.tools.util.MarkableFileInputStreamFactory;
+import opennlp.tools.util.ObjectStream;
+import opennlp.tools.util.PlainTextByLineStream;
+import opennlp.tools.util.TrainingParameters;
+import org.apache.commons.io.FileUtils;
 
 /**
  *
@@ -23,6 +41,7 @@ import net.saga.java.mbox.ajug.vo.EmailMessage;
 public class CategorizorUI extends javax.swing.JPanel {
 
     private HibernateModule hibernate;
+    private DoccatModel model;
 
     /**
      * Creates new form CategorizorUI
@@ -46,8 +65,9 @@ public class CategorizorUI extends javax.swing.JPanel {
         messagesList.addListSelectionListener(new ListSelectionListener() {
             @Override
             public void valueChanged(ListSelectionEvent e) {
+                categoryOutput.setText(" ");
                 if (messagesList.getSelectedIndices().length == 1) {
-                    messageDisplay.setText(messagesList.getSelectedValue().getBody());
+                    messageDisplay.setText((messagesList.getSelectedValue().getBody()));
                     if (messagesList.getSelectedValue().getClassification() != null) {
                         selectCategory(messagesList.getSelectedValue().getClassification());
                     } else {
@@ -88,14 +108,22 @@ public class CategorizorUI extends javax.swing.JPanel {
         messageDetailSplit = new javax.swing.JSplitPane();
         jScrollPane2 = new javax.swing.JScrollPane();
         messagesList = new javax.swing.JList<>();
+        jPanel2 = new javax.swing.JPanel();
         jScrollPane3 = new javax.swing.JScrollPane();
         messageDisplay = new javax.swing.JTextArea();
+        jLabel1 = new javax.swing.JLabel();
+        categoryOutput = new javax.swing.JLabel();
         jScrollPane1 = new javax.swing.JScrollPane();
         categoriesList = new javax.swing.JList<>();
 
         addCategoryButton.setText("Add Category");
 
         testCategorizer.setText("Test Categorizer");
+        testCategorizer.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                testCategorizerActionPerformed(evt);
+            }
+        });
 
         trainCategories.setText("Train Categories");
         trainCategories.addActionListener(new java.awt.event.ActionListener() {
@@ -105,6 +133,11 @@ public class CategorizorUI extends javax.swing.JPanel {
         });
 
         exportTrainingButton.setText("Export Categories");
+        exportTrainingButton.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                exportTrainingButtonActionPerformed(evt);
+            }
+        });
 
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
@@ -146,7 +179,31 @@ public class CategorizorUI extends javax.swing.JPanel {
         messageDisplay.setRows(5);
         jScrollPane3.setViewportView(messageDisplay);
 
-        messageDetailSplit.setRightComponent(jScrollPane3);
+        jLabel1.setText("Category is");
+
+        javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
+        jPanel2.setLayout(jPanel2Layout);
+        jPanel2Layout.setHorizontalGroup(
+            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addComponent(jScrollPane3, javax.swing.GroupLayout.DEFAULT_SIZE, 685, Short.MAX_VALUE)
+            .addGroup(jPanel2Layout.createSequentialGroup()
+                .addContainerGap()
+                .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 73, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addComponent(categoryOutput)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+        );
+        jPanel2Layout.setVerticalGroup(
+            jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+            .addGroup(jPanel2Layout.createSequentialGroup()
+                .addComponent(jScrollPane3, javax.swing.GroupLayout.DEFAULT_SIZE, 406, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                    .addComponent(jLabel1)
+                    .addComponent(categoryOutput)))
+        );
+
+        messageDetailSplit.setRightComponent(jPanel2);
 
         categoryMessagePane.setRightComponent(messageDetailSplit);
 
@@ -162,7 +219,7 @@ public class CategorizorUI extends javax.swing.JPanel {
             .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
             .addGroup(layout.createSequentialGroup()
                 .addContainerGap()
-                .addComponent(categoryMessagePane, javax.swing.GroupLayout.DEFAULT_SIZE, 961, Short.MAX_VALUE)
+                .addComponent(categoryMessagePane)
                 .addContainerGap())
         );
         layout.setVerticalGroup(
@@ -176,16 +233,85 @@ public class CategorizorUI extends javax.swing.JPanel {
     }// </editor-fold>//GEN-END:initComponents
 
     private void trainCategoriesActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_trainCategoriesActionPerformed
-        // TODO add your handling code here:
+
+        try {
+            InputStreamFactory dataIn = new MarkableFileInputStreamFactory(new File("/tmp/devnexus_training.txt"));
+            ObjectStream lineStream = new PlainTextByLineStream(dataIn, "UTF-8");
+            ObjectStream sampleStream = new DocumentSampleStream(lineStream);
+
+            TrainingParameters params = new TrainingParameters();
+            params.put(TrainingParameters.ITERATIONS_PARAM, 10+"");
+            params.put(TrainingParameters.CUTOFF_PARAM, 0+"");
+            params.put(AbstractTrainer.ALGORITHM_PARAM, NaiveBayesTrainer.NAIVE_BAYES_VALUE);
+
+            
+            this.model = DocumentCategorizerME.train("en", sampleStream, params, new DoccatFactory());
+
+        } catch (IOException ex) {
+            Logger.getLogger(CategorizorUI.class.getName()).log(Level.SEVERE, null, ex);
+        } finally {
+
+        }
     }//GEN-LAST:event_trainCategoriesActionPerformed
+
+    private void exportTrainingButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_exportTrainingButtonActionPerformed
+        int messagesLength = messagesList.getModel().getSize();
+        List<EmailMessage> categorizedEmails = new ArrayList<>();
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < messagesLength; i++) {
+            EmailMessage email = messagesList.getModel().getElementAt(i);
+            if (email.getClassification() != null) {
+                categorizedEmails.add(email);
+            }
+        }
+
+        categorizedEmails.forEach((email) -> {
+            builder.append(email.getClassification().getClassification() + " " + email.getSubject() + " " + sanitizeBody(email.getBody()).replace("\n", " ").replace("\r", " ") + "\n");
+        });
+
+        try {
+            FileUtils.writeStringToFile(new File("/tmp/devnexus_training.txt"), builder.toString());
+        } catch (IOException ex) {
+            Logger.getLogger(CategorizorUI.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+
+    }//GEN-LAST:event_exportTrainingButtonActionPerformed
+
+    private void testCategorizerActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_testCategorizerActionPerformed
+        
+        if (messagesList.getSelectedIndex() == -1) {
+            return;
+        }
+        
+        EmailMessage email  = messagesList.getSelectedValue();
+        DocumentCategorizer myCategorizer = new DocumentCategorizerME(model);
+        double[] outcomes = myCategorizer.categorize((email.getSubject() + " " + sanitizeBody(email.getBody()).replace("\n", " ").replace("\r", " ") + "\n").replaceAll("[^A-Za-z]", " ").split(" "));
+       
+        
+            // print the probabilities of the categories
+            System.out.println("\n---------------------------------\nCategory : Probability\n---------------------------------");
+            for(int i=0;i<myCategorizer.getNumberOfCategories();i++){
+                System.out.println(myCategorizer.getCategory(i)+" : "+outcomes[i]);
+            }
+            System.out.println("---------------------------------");
+ 
+            System.out.println("\n"+myCategorizer.getBestCategory(outcomes)+" : is the predicted category for the given sentence.");
+        
+            categoryOutput.setText(" predicted " + myCategorizer.getBestCategory(outcomes));
+        
+    }//GEN-LAST:event_testCategorizerActionPerformed
 
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
     private javax.swing.JButton addCategoryButton;
     private javax.swing.JList<Classification> categoriesList;
     private javax.swing.JSplitPane categoryMessagePane;
+    private javax.swing.JLabel categoryOutput;
     private javax.swing.JButton exportTrainingButton;
+    private javax.swing.JLabel jLabel1;
     private javax.swing.JPanel jPanel1;
+    private javax.swing.JPanel jPanel2;
     private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JScrollPane jScrollPane2;
     private javax.swing.JScrollPane jScrollPane3;
@@ -219,11 +345,30 @@ public class CategorizorUI extends javax.swing.JPanel {
 
     private void selectCategory(Classification classification) {
         ListModel<Classification> model = categoriesList.getModel();
-        for (int i=0; i < model.getSize(); i++) {
+        for (int i = 0; i < model.getSize(); i++) {
             if (model.getElementAt(i).getClassification().equals(classification.getClassification())) {
                 categoriesList.setSelectedIndex(i);
+                categoryOutput.setText(" chosen " + categoriesList.getSelectedValue().getClassification());
                 break;
             }
         }
     }
+    
+    private String sanitizeBody(String body) {
+        String noForward = body.replaceAll("(?m)^>.*", "");
+        String nonHtmls[] = noForward.split("Content-Type: text/html");
+        int minTagsIndex = 0;
+        int minGts = Integer.MAX_VALUE;
+        for (int i = 0; i < nonHtmls.length; i++) {
+            String nonHtmlTest = nonHtmls[i];
+            int gtCount = nonHtmlTest.split(">").length;
+            if (gtCount < minGts) {
+                minGts = gtCount;
+                minTagsIndex = i;
+            }
+        }
+        return nonHtmls[minTagsIndex].replaceAll("[^A-Za-z]", " ");
+        
+    }
+    
 }
